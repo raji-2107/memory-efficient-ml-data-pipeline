@@ -1,3 +1,21 @@
+def test_new_step_can_be_added_without_changing_pipeline():
+    class UppercaseStep(Step):
+        def execute(self, data):
+            return [item.upper() for item in data]
+
+    pipeline = Pipeline(
+        [
+            NormalizeStep(),
+            UppercaseStep(),
+        ]
+    )
+
+    result = pipeline.run([" apple ", " banana "])
+
+    assert result == [
+        "APPLE",
+        "BANANA",
+    ]
 import pytest
 import sys
 from pathlib import Path
