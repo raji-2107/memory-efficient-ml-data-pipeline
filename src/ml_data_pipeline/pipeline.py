@@ -3,6 +3,11 @@ import logging
 
 from src.ml_data_pipeline.context_manager import managed_resource
 from src.ml_data_pipeline.decorators import retry, timeit
+from src.ml_data_pipeline.exceptions import (
+    PipelineError,
+    DataValidationError,
+    ProcessingError,
+)
 
 
 class Step(ABC):
@@ -52,18 +57,53 @@ class Pipeline:
     @timeit
     @retry(max_attempts=3)
     def run(self, data):
-        result = data
+        if data is None:
+            raise DataValidationError(
+                "Input data validation failed in Pipeline.run: "
+                "data cannot be None."
+            )
 
-        for step in self.steps:
-            result = step.execute(result)
+        if not isinstance(data, list):
+            raise DataValidationError(
+                "Input data validation failed in Pipeline.run: "
+                f"expected a list, received {type(data).__name__}."
+            )
 
-        return result
+        try:
+            result = data
+
+            for step in self.steps:
+                result = step.execute(result)
+
+            return result
+
+        except PipelineError:
+            raise
+
+        except Exception as error:
+            raise ProcessingError(
+                "Pipeline processing failed in Pipeline.run: "
+                f"{type(error).__name__}: {error}"
+            ) from error
 
     @timeit
     def process_file(self, file_path):
-        with open(file_path, "r", encoding="utf-8") as file:
-            with managed_resource(file) as resource:
-                data = [line.strip() for line in resource if line.strip()]
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                with managed_resource(file) as resource:
+                    data = [line.strip() for line in resource if line.strip()]
+
+        except FileNotFoundError as error:
+            raise DataValidationError(
+                "File validation failed in Pipeline.process_file: "
+                f"file does not exist: {file_path}"
+            ) from error
+
+        except OSError as error:
+            raise ProcessingError(
+                "File processing failed in Pipeline.process_file: "
+                f"could not read '{file_path}': {error}"
+            ) from error
 
         logging.info("Processed file: %s", file_path)
         return self.run(data)
