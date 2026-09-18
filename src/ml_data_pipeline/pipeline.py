@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+import logging
+
+from src.ml_data_pipeline.context_manager import managed_resource
+from src.ml_data_pipeline.decorators import retry, timeit
 
 
 class Step(ABC):
@@ -45,6 +49,8 @@ class Pipeline:
     def __init__(self, steps):
         self.steps = steps
 
+    @timeit
+    @retry(max_attempts=3)
     def run(self, data):
         result = data
 
@@ -52,3 +58,12 @@ class Pipeline:
             result = step.execute(result)
 
         return result
+
+    @timeit
+    def process_file(self, file_path):
+        with open(file_path, "r", encoding="utf-8") as file:
+            with managed_resource(file) as resource:
+                data = [line.strip() for line in resource if line.strip()]
+
+        logging.info("Processed file: %s", file_path)
+        return self.run(data)
